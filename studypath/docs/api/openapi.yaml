@@ -1,0 +1,658 @@
+openapi: 3.0.3
+info:
+  title: StudyPath API
+  description: |
+    API REST do StudyPath — Plataforma SaaS de Gerenciamento de Estudos para Vestibular.
+    
+    ## Autenticação
+    A maioria dos endpoints requer autenticação via JWT Bearer Token.
+    Obtenha o token em `POST /auth/login` ou `POST /auth/google`.
+    
+    ## Planos
+    - **Todos**: endpoints acessíveis para qualquer plano (incluindo gratuito)
+    - **Premium**: requer plano Premium ou Institucional
+  version: 1.0.0
+  contact:
+    name: StudyPath — Projeto Integrador
+    url: https://github.com/mindrodr/studypath-vestibular
+
+servers:
+  - url: https://api.studypath.app/v1
+    description: Produção
+  - url: http://localhost:3000/v1
+    description: Desenvolvimento local
+
+tags:
+  - name: Auth
+    description: Autenticação e gerenciamento de sessão
+  - name: Users
+    description: Perfil e configurações do usuário
+  - name: Schedules
+    description: Cronograma de estudos
+  - name: Questions
+    description: Banco de questões
+  - name: Flashcards
+    description: Flashcards com repetição espaçada
+  - name: Analytics
+    description: Desempenho e relatórios
+  - name: Topics
+    description: Mapa de progresso do edital
+  - name: AI
+    description: Funcionalidades de Inteligência Artificial
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        statusCode: { type: integer }
+        message:    { type: string }
+        error:      { type: string }
+
+    User:
+      type: object
+      properties:
+        id:          { type: string, format: uuid }
+        name:        { type: string }
+        email:       { type: string, format: email }
+        role:        { type: string, enum: [student, admin] }
+        plan:        { type: string, enum: [free, premium, institutional] }
+        target_exam: { type: string, example: ENEM }
+        target_date: { type: string, format: date }
+        created_at:  { type: string, format: date-time }
+
+    Schedule:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        week_start: { type: string, format: date }
+        week_end:   { type: string, format: date }
+        sessions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:              { type: string, format: uuid }
+              subject:         { type: string }
+              topic:           { type: string }
+              day_of_week:     { type: integer, minimum: 0, maximum: 6 }
+              planned_minutes: { type: integer }
+              completed:       { type: boolean }
+
+    Question:
+      type: object
+      properties:
+        id:         { type: string, format: uuid }
+        subject:    { type: string }
+        topic:      { type: string }
+        exam_board: { type: string, enum: [ENEM, FUVEST, UNICAMP, UNESP, outras] }
+        year:       { type: integer }
+        statement:  { type: string }
+        option_a:   { type: string }
+        option_b:   { type: string }
+        option_c:   { type: string }
+        option_d:   { type: string }
+        option_e:   { type: string }
+        difficulty: { type: string, enum: [easy, medium, hard] }
+
+    Flashcard:
+      type: object
+      properties:
+        _id:     { type: string }
+        subject: { type: string }
+        topic:   { type: string }
+        front:   { type: string }
+        back:    { type: string }
+        tags:    { type: array, items: { type: string } }
+        sm2:
+          type: object
+          properties:
+            interval_days:  { type: integer }
+            repetitions:    { type: integer }
+            ease_factor:    { type: number }
+            next_review:    { type: string, format: date-time }
+            last_reviewed:  { type: string, format: date-time }
+            last_grade:     { type: integer, minimum: 0, maximum: 5 }
+
+paths:
+
+  # ── AUTH ─────────────────────────────────────────────────
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Cadastro de novo usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name:     { type: string, example: Lucas Mendes }
+                email:    { type: string, format: email, example: lucas@email.com }
+                password: { type: string, minLength: 8, example: "senha123" }
+      responses:
+        "201":
+          description: Usuário criado com sucesso
+          content:
+            application/json:
+              example:
+                user: { id: "uuid", name: "Lucas Mendes", email: "lucas@email.com" }
+                access_token: "eyJhbGci..."
+                refresh_token: "eyJhbGci..."
+        "409": { description: "E-mail já cadastrado" }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Login com e-mail e senha
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:    { type: string, format: email }
+                password: { type: string }
+      responses:
+        "200":
+          description: Login realizado com sucesso
+          content:
+            application/json:
+              example:
+                access_token: "eyJhbGci..."
+                refresh_token: "eyJhbGci..."
+                expires_in: 3600
+        "401": { description: Credenciais inválidas }
+
+  /auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Renovar access token usando refresh token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token: { type: string }
+      responses:
+        "200":
+          description: Token renovado
+          content:
+            application/json:
+              example:
+                access_token: "eyJhbGci..."
+                expires_in: 3600
+        "401": { description: Refresh token inválido ou expirado }
+
+  /auth/google:
+    post:
+      tags: [Auth]
+      summary: Login via Google OAuth 2.0
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                id_token: { type: string, description: Token retornado pelo Google }
+      responses:
+        "200":
+          description: Login Google realizado
+          content:
+            application/json:
+              example:
+                access_token: "eyJhbGci..."
+                refresh_token: "eyJhbGci..."
+                user: { id: "uuid", name: "Lucas", email: "lucas@gmail.com" }
+
+  # ── USERS ─────────────────────────────────────────────────
+  /users/me:
+    get:
+      tags: [Users]
+      summary: Retorna perfil do usuário autenticado
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Perfil do usuário
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "401": { description: Não autenticado }
+    patch:
+      tags: [Users]
+      summary: Atualiza dados do perfil
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:        { type: string }
+                target_exam: { type: string, enum: [ENEM, FUVEST, UNICAMP] }
+                target_date: { type: string, format: date }
+      responses:
+        "200":
+          description: Perfil atualizado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+
+  # ── SCHEDULES ─────────────────────────────────────────────
+  /schedules/current:
+    get:
+      tags: [Schedules]
+      summary: Retorna o cronograma da semana atual
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Cronograma da semana
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+
+  /schedules/generate:
+    post:
+      tags: [Schedules]
+      summary: Gera novo cronograma com base no diagnóstico e metas
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                available_hours_per_week: { type: integer, example: 10 }
+                priority_subjects: { type: array, items: { type: string } }
+      responses:
+        "201":
+          description: Cronograma gerado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Schedule" }
+
+  /schedules/sessions/{id}:
+    patch:
+      tags: [Schedules]
+      summary: Marca sessão como concluída
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Sessão marcada como concluída
+          content:
+            application/json:
+              example:
+                id: "uuid"
+                completed: true
+                completed_at: "2026-06-23T15:00:00Z"
+                streak_updated: true
+                new_streak: 8
+
+  # ── QUESTIONS ─────────────────────────────────────────────
+  /questions:
+    get:
+      tags: [Questions]
+      summary: Lista questões com filtros
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: subject
+          schema: { type: string, example: Matematica }
+        - in: query
+          name: exam_board
+          schema: { type: string, enum: [ENEM, FUVEST, UNICAMP, UNESP] }
+        - in: query
+          name: difficulty
+          schema: { type: string, enum: [easy, medium, hard] }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 10, maximum: 50 }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+      responses:
+        "200":
+          description: Lista paginada de questões
+          content:
+            application/json:
+              example:
+                data: []
+                total: 150
+                page: 1
+                limit: 10
+
+  /questions/{id}/answer:
+    post:
+      tags: [Questions]
+      summary: Registra resposta do aluno e retorna gabarito
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [chosen]
+              properties:
+                chosen: { type: string, enum: [a, b, c, d, e] }
+      responses:
+        "200":
+          description: Resultado da resposta
+          content:
+            application/json:
+              example:
+                is_correct: true
+                correct_answer: "c"
+                explanation: "f(2) = 2(4) - 6 + 1 = 3"
+                performance:
+                  subject: "Matematica"
+                  accuracy: 0.80
+
+  /questions/simulate:
+    get:
+      tags: [Questions]
+      summary: Gera simulado (requer plano Premium)
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: exam_board
+          schema: { type: string }
+        - in: query
+          name: count
+          schema: { type: integer, default: 45 }
+      responses:
+        "200":
+          description: Simulado gerado
+        "403":
+          description: Requer plano Premium
+          content:
+            application/json:
+              example:
+                statusCode: 403
+                message: "Esta funcionalidade requer o plano premium."
+
+  # ── FLASHCARDS ─────────────────────────────────────────────
+  /flashcards/due:
+    get:
+      tags: [Flashcards]
+      summary: Lista flashcards com revisão pendente para hoje
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: subject
+          schema: { type: string }
+        - in: query
+          name: limit
+          schema: { type: integer, default: 20 }
+      responses:
+        "200":
+          description: Cards pendentes de revisão
+          content:
+            application/json:
+              example:
+                total_due: 4
+                cards:
+                  - _id: "abc123"
+                    subject: "Biologia"
+                    front: "O que é fotossíntese?"
+                    sm2: { interval_days: 1, next_review: "2026-06-23" }
+
+  /flashcards:
+    post:
+      tags: [Flashcards]
+      summary: Cria novo flashcard
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, front, back]
+              properties:
+                subject: { type: string }
+                topic:   { type: string }
+                front:   { type: string }
+                back:    { type: string }
+                tags:    { type: array, items: { type: string } }
+      responses:
+        "201":
+          description: Flashcard criado
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Flashcard" }
+
+  /flashcards/{id}/review:
+    post:
+      tags: [Flashcards]
+      summary: Registra resultado da revisão e agenda próxima
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [grade]
+              properties:
+                grade:
+                  type: integer
+                  minimum: 0
+                  maximum: 5
+                  description: "0=falha total, 3=lembrei com dificuldade, 5=perfeito"
+      responses:
+        "200":
+          description: Revisão registrada
+          content:
+            application/json:
+              example:
+                next_review: "2026-06-30"
+                interval_days: 7
+                new_ease_factor: 2.6
+
+  # ── ANALYTICS ─────────────────────────────────────────────
+  /analytics/performance:
+    get:
+      tags: [Analytics]
+      summary: Retorna métricas de desempenho por matéria
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: period
+          schema: { type: string, enum: [week, month, all], default: week }
+      responses:
+        "200":
+          description: Métricas de desempenho
+          content:
+            application/json:
+              example:
+                period: "week"
+                overall_accuracy: 0.72
+                studied_minutes: 510
+                questions_answered: 48
+                by_subject:
+                  - subject: "Matematica"
+                    accuracy: 0.80
+                    total: 20
+                  - subject: "Historia"
+                    accuracy: 0.50
+                    total: 10
+
+  /analytics/report:
+    get:
+      tags: [Analytics]
+      summary: Gera relatório PDF mensal (requer Premium)
+      security: [{ BearerAuth: [] }]
+      responses:
+        "200":
+          description: Arquivo PDF do relatório
+          content:
+            application/pdf:
+              schema: { type: string, format: binary }
+        "403": { description: Requer plano Premium }
+
+  # ── TOPICS ─────────────────────────────────────────────────
+  /topics/progress:
+    get:
+      tags: [Topics]
+      summary: Retorna mapa de progresso por matéria
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: query
+          name: subject
+          schema: { type: string }
+      responses:
+        "200":
+          description: Progresso por tópico
+          content:
+            application/json:
+              example:
+                subject: "Matematica"
+                topics:
+                  - topic: "Funções do 1º grau"
+                    status: "mastered"
+                  - topic: "Trigonometria"
+                    status: "reviewing"
+                  - topic: "Matrizes"
+                    status: "pending"
+
+  /topics/{id}/status:
+    patch:
+      tags: [Topics]
+      summary: Atualiza status de um tópico
+      security: [{ BearerAuth: [] }]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [status]
+              properties:
+                status:
+                  type: string
+                  enum: [pending, reviewing, mastered]
+      responses:
+        "200":
+          description: Status atualizado
+          content:
+            application/json:
+              example:
+                id: "uuid"
+                topic: "Trigonometria"
+                status: "mastered"
+                updated_at: "2026-06-23T15:00:00Z"
+
+  # ── AI ─────────────────────────────────────────────────────
+  /ai/recommend:
+    post:
+      tags: [AI]
+      summary: Recomendações de estudo personalizadas via IA (Premium)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                days_ahead: { type: integer, default: 7 }
+      responses:
+        "200":
+          description: Recomendações geradas pela IA
+          content:
+            application/json:
+              example:
+                priority_subjects: ["Historia", "Fisica"]
+                weekly_plan:
+                  - day: "Segunda"
+                    subject: "Historia"
+                    hours: 2
+                    focus: "Brasil República"
+                tips:
+                  - "Foque nas matérias com aproveitamento abaixo de 60%"
+        "403": { description: Requer plano Premium }
+
+  /ai/explain:
+    post:
+      tags: [AI]
+      summary: Explicação detalhada de questão errada via IA (Premium)
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [question_id, chosen]
+              properties:
+                question_id: { type: string, format: uuid }
+                chosen:      { type: string, enum: [a, b, c, d, e] }
+      responses:
+        "200":
+          description: Explicação gerada pela IA
+          content:
+            application/json:
+              example:
+                explanation: "A alternativa C está correta porque f(2) = 2(4) - 6 + 1 = 3. A alternativa A está errada pois..."
+        "403": { description: Requer plano Premium }
+
+  /ai/flashcards/generate:
+    post:
+      tags: [AI]
+      summary: Geração automática de flashcards via IA
+      security: [{ BearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [subject, topic]
+              properties:
+                subject: { type: string, example: Biologia }
+                topic:   { type: string, example: Fotossíntese }
+                count:   { type: integer, default: 5, maximum: 10 }
+      responses:
+        "201":
+          description: Flashcards gerados e salvos
+          content:
+            application/json:
+              example:
+                generated: 5
+                flashcards:
+                  - front: "O que é fotossíntese?"
+                    back: "Conversão de luz solar em glicose"
+                    tags: ["biologia", "botanica"]
