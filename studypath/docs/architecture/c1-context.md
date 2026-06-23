@@ -5,12 +5,12 @@
 ```mermaid
 graph TB
     subgraph Usuarios
-        A[👤 Estudante Vestibulando]
-        B[🏫 Escola / Cursinho]
+        A[Estudante Vestibulando]
+        B[Escola / Cursinho]
     end
 
     subgraph StudyPath_SaaS [StudyPath - Plataforma SaaS]
-        C[🎯 StudyPath System]
+        C[StudyPath System]
     end
 
     subgraph Externos [Sistemas Externos]
