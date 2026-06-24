@@ -25,7 +25,7 @@ O **StudyPath** é uma plataforma SaaS que ajuda estudantes do Ensino Médio a s
 | Nome | RA | GitHub |
 |------|----|--------|
 | Cristian Silva Rodrigues | 924115784 | [@mindrodr](https://github.com/mindrodr) |
-| Kayky Henrique da Silva  | 924112141 | — |
+| Kayky Henrique da Silva  | 924112141 | [@kaykyhenrique-bit](https://github.com/kaykyhenrique-bit) |
 
 ---
 
