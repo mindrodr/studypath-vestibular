@@ -34,7 +34,7 @@ O **StudyPath** é uma plataforma SaaS que ajuda estudantes do Ensino Médio a s
 | Recurso | Link |
 |---------|------|
 | Protótipo Figma | [Abrir no Figma](https://www.figma.com/proto/PuPz8UZcRYo1LF3ZIv0qGm/StudyPath?node-id=0-1&t=jAqitq9TIiY2q19a-1) |
-| Quadro Kanban | [GitHub Projects](https://github.com/mindrodr/studypath-vestibular/projects/1) |
+| Quadro Kanban | [GitHub Projects] |
 | Documentação API | [OpenAPI / Swagger](./docs/api/openapi.yaml) |
 | Script SQL | [studypath_schema.sql](./docs/database/studypath_schema.sql) |
 | Diagramas C4 | [/docs/architecture](./docs/architecture/) |
